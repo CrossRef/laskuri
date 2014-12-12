@@ -170,13 +170,16 @@
   Returns consistent mapping of domains and subdomains to random value."
   (if (domain-whitelist domain)
     [subdomain domain tld]
-    (let [orig-subdomain-redacted (@blacklist-subdomains [subdomain domain tld])
-          orig-domain-redacted (@blacklist [domain tld])
+    (let [domain-key [domain tld]
+          subdomain-key [subdomain domain tld]
+          
+          orig-subdomain-redacted (@blacklist-subdomains subdomain-key)
+          orig-domain-redacted (@blacklist domain-key)
           
           subdomain-redacted (or orig-subdomain-redacted (.substring (.replace (.toString (java.util.UUID/randomUUID)) "-" "") 0 4))
           domain-redacted (or orig-domain-redacted (.substring (.replace (.toString (java.util.UUID/randomUUID)) "-" "") 0 12))]
       
       ; If we had to generate, store.
-      (when-not orig-subdomain-redacted (swap! blacklist assoc domain domain-redacted))
-      (when-not orig-domain-redacted (swap! blacklist-subdomains assoc [subdomain domain] domain-redacted))
+      (when-not orig-subdomain-redacted (swap! blacklist assoc domain-key domain-redacted))
+      (when-not orig-domain-redacted (swap! blacklist-subdomains assoc subdomain-key domain-redacted))
       [subdomain-redacted domain-redacted "redacted"])))
