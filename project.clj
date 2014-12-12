@@ -8,7 +8,8 @@
                  [clj-time "0.8.0"]
                  [org.clojure/data.json "0.2.3"]
                  [org.clojure/tools.logging "0.2.6"]
-                 [environ "1.0.0"]]
+                 [environ "1.0.0"]
+                 [org.apache.spark/spark-core_2.10 "1.1.1"]]
   
   :main ^:skip-aot laskuri.core
   :profiles {:provided

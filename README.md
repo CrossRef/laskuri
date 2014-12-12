@@ -50,7 +50,19 @@ The following environment variables must be set:
  - `OUTPUT_LOCATION`, e.g. `file://tmp/doi_output` or `s3://doi_logs/output`
  - `REDACT`, e.g. `true` or `false`
 
-An example `run-dev.sh.example` is included.
+### Leiningen
+
+The project can be run with `lein run` during development. An example `run-dev-lein.sh.example` is included. 
+
+### spark-submit
+
+It can be run by `spark-submit` in production. To do this:
+
+    lein uberjar
+    spark-submit --class laskuri.core --name "Laskuri" --master local ./target/uberjar/laskuri-0.1.0-SNAPSHOT-standalone.jar
+
+Example given in `run-example-s3-sparkrunner.sh`.
+
 
 ## Amazon S3
 

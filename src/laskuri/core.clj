@@ -7,17 +7,8 @@
   (:require [clojure.java.io :as io])
   (:use [clojure.tools.logging :only (info error)])
   (:require [environ.core :refer [env]])
-  (:gen-class))
+  (:gen-class main true)) ;:gen-class :)
 
-(def c (-> (conf/spark-conf)
-           (conf/master "local")
-           (conf/app-name "laskuri")
-           (conf/set "spark.driver.memory" "500m")
-           (conf/set "spark.executor.memory" "500m")
-           (conf/set "spark.kryoserializer.buffer.mb" "256") ; TODO tune
-           ))
-
-(def sc (f/spark-context c))
 
 (defn format-kv
   "Format a Key, Value line into a tab separated string."
@@ -154,7 +145,19 @@
   [& args]
   (let [input-location (env :input-location)
         output-location (env :output-location)
-        redact (= (.toLowerCase (or (env :redact) "false")) "true")]  
+        redact (= (.toLowerCase (or (env :redact) "false")) "true")
+        dev-local (env :dev-local)
+        
+        ; If local, use this config. Otherwise empty, will be loaded from `spark-submit`. 
+        conf (if dev-local
+                (-> (conf/spark-conf)
+                   (conf/master "local")
+                   (conf/app-name "laskuri")
+                   (conf/set "spark.driver.memory" "500m")
+                   (conf/set "spark.executor.memory" "500m")
+                   (conf/set "spark.kryoserializer.buffer.mb" "256"))
+                (conf/spark-conf))
+          sc (f/spark-context conf)]  
     (when (and input-location output-location)
       (info "Input" input-location)
       (info "Output" output-location)      
