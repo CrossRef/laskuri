@@ -97,10 +97,10 @@
         subdomain-count (count-by-key subdomain-doi)]
       
   
-    (.saveAsTextFile (f/map doi-first-date format-kv) (str output-location "/ever/doi-first-date"))
-    (.saveAsTextFile (f/map doi-count format-kv) (str output-location "/ever/doi-count"))
-    (.saveAsTextFile (f/map domain-count format-kv) (str output-location "/ever/domain-count"))
-    (.saveAsTextFile (f/map subdomain-count format-ksv) (str output-location "/ever/subdomain-count"))))
+    (.saveAsTextFile (f/map doi-first-date format-kv) (str output-location "/ever-doi-first-date"))
+    (.saveAsTextFile (f/map doi-count format-kv) (str output-location "/ever-doi-count"))
+    (.saveAsTextFile (f/map domain-count format-kv) (str output-location "/ever-domain-count"))
+    (.saveAsTextFile (f/map subdomain-count format-ksv) (str output-location "/ever-subdomain-count"))))
 
 (defn generate-per-period
   "Generate figures per-day."
@@ -145,20 +145,21 @@
         ; subdomain -> count per period
         subdomain-period-count (count-by-key subdomain-period-date)]
     
-    (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "/doi-period-count"))
-    (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "/domain-period-count"))
-    (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "/subdomain-period-count"))))
+    (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "-doi-period-count"))
+    (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "-domain-period-count"))
+    (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "-subdomain-period-count"))))
 
 
 (defn -main
   [& args]
   (let [input-location (env :input-location)
         output-location (env :output-location)
-        redact (= (.toLowerCase (env :redact)) "true")]
-    (prn "redact" redact (.toUpperCase (env :redact)))
-    
-    (generate-all-time sc input-location output-location redact)
-    (generate-per-period sc :year input-location output-location redact)
-    (generate-per-period sc :month input-location output-location redact)
-    (generate-per-period sc :day input-location output-location redact)
+        redact (= (.toLowerCase (or (env :redact) "false")) "true")]  
+    (when (and input-location output-location)
+      (info "Input" input-location)
+      (info "Output" output-location)      
+      (generate-all-time sc input-location output-location redact)
+      (generate-per-period sc :year input-location output-location redact)
+      (generate-per-period sc :month input-location output-location redact)
+      (generate-per-period sc :day input-location output-location redact))
 ))

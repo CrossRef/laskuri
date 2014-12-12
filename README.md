@@ -4,6 +4,14 @@ Log analysis for CrossRef referral data. For CrossRef Labs projects, but applica
 
 Takes standard DOI resolution logs and aggregates to various outputs. Uses [Apache Spark](http://spark.apache.org/) framework to parallelize work.
 
+## Quick start
+
+Run:
+
+    ./run-example.sh
+
+This will take the example file at `example/hundred/input/hundred.txt` and write the output to `example/hundred/output`.
+
 ## Input and output
 
 The output of this program is various files placed at the output path. The output can be consumed (e.g. by the 'DOI time' project) to produce user-friendly charts, graphs, tables and chairs. The outputs are:
@@ -43,6 +51,14 @@ The following environment variables must be set:
  - `REDACT`, e.g. `true` or `false`
 
 An example `run-dev.sh.example` is included.
+
+## Amazon S3
+
+S3 is used to store the log files, as it's cheap, resilient and accessible from Elastic Compute instances for free. It's [not the most efficient source](http://wiki.apache.org/hadoop/AmazonS3) but it performs well enough for now. To run the demo with S3, you must get an AWS key-pair, and then edit and run
+
+    ./run-example-s3.sh
+
+As of the new [AWS Signature Version 4](http://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html), authentication changes (which is optional in some zones and compusory, e.g. in Frankfurt) mean that [Hadoop is now incompatible until this fix](https://issues.apache.org/jira/browse/JCLOUDS-480) is deployed. So if authentication fails, try a bucket in a different availability zone.
 
 ## Incidentally
 

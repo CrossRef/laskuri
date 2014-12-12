@@ -1,1 +1,0 @@
-INPUT_LOCATION=file:///tmp/access_log_201210_cr5 OUTPUT_LOCATION=file:///tmp/output REDACT=TRUE lein run
