@@ -116,12 +116,12 @@
         doi-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
                                             [[doi date] date]))
 
-        ; [domain period] -> date
+        ; [full-url-domain-only domain period] -> date
         domain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
-                                            [[(str domain "." tld) date] date]))
+                                            [[(str domain "." tld) domain date] date]))
 
         
-        ; [subdomain domain period] -> date
+        ; [full-url-including-subdomain domain period] -> date
         subdomain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
                                             [[(str subdomain "." domain "." tld) domain date] date]))
 
@@ -146,7 +146,7 @@
   (let [input-location (env :input-location)
         output-location (env :output-location)
         redact (= (.toLowerCase (or (env :redact) "false")) "true")
-        dev-local (env :dev-local)
+        dev-local (= (.toLowerCase (or (env :dev-local) "false")) "true")
         
         ; If local, use this config. Otherwise empty, will be loaded from `spark-submit`. 
         conf (if dev-local
