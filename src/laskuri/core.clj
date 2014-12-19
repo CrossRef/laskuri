@@ -34,7 +34,7 @@
   [coll]
   (f/map coll (f/fn [[cnt k]] [k cnt])))
 
-(defn count-by-key
+(defn count-by-key-sorted
   "For a key, value collection, count the key, returning key, count ordered by count.
   Is a 'transformation' producing an RDD, is not an 'action'.
   The Spark count-by-key is an action, so not massively useful for large datasets."
@@ -46,6 +46,31 @@
           (f/map collection (f/fn [[k _]] [k 1]))
           (f/fn [a b] (+ a b))))
       false)))
+
+(defn count-by-key
+  "For a key, value collection, count the key, returning key, count.
+  Is a 'transformation' producing an RDD, is not an 'action'.
+  The Spark count-by-key is an action, so not massively useful for large datasets."
+  [collection]
+  (f/reduce-by-key
+    (f/map collection (f/fn [[k _]] [k 1]))
+    (f/fn [a b] (+ a b))))
+  
+; (defn sort-by-selector
+;   "For a key value collection, order by the selector (which acts on the kv pair) and then return in original format."
+;   [collection selector]
+;   ; (f/map
+;     ; Sort by the key
+;     ; (f/sort-by-key
+;       ; Map into [selected field, kv pair]
+;       (f/map collection (f/fn [kv] [(selector kv) kv])))
+;     ; Strip key and return to original format.
+;     ; (f/fn [k v] v)))
+    
+(defn sort-by-selector
+  "For a key value collection, order by the selector (which acts on the kv pair) and then return in original format."
+  [collection sel] 
+  (f/map (f/sort-by-key (f/map collection (f/fn [kv] [(sel kv) kv]))) (f/fn [[_ v]] v)))
 
 ;; The parts of the analysis are divided into all-time, per year, month and day. This is because each pipline involves (potentially) re-reading the input stream
 ;; and there seems to be a bug or something that crops up when rereading the stream multiple times. Still unsolved: http://stackoverflow.com/questions/27403732/kryoexception-buffer-overflow-with-very-small-input
@@ -78,14 +103,14 @@
         doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date a b)))
 
         ; doi -> count
-        doi-count (count-by-key doi-date)
+        doi-count (count-by-key-sorted doi-date)
         
         ; domain -> count
-        domain-count (count-by-key domain-date)
+        domain-count (count-by-key-sorted domain-date)
         
         ; domain and subdomain, domain -> count
         ; including both subdomain and domain is necessary for the consumer of this dataset.
-        subdomain-count (count-by-key subdomain-doi)]
+        subdomain-count (count-by-key-sorted subdomain-doi)]
       
   
     (.saveAsTextFile (f/map doi-first-date format-kv) (str output-location "/ever-doi-first-date"))
@@ -126,16 +151,25 @@
                                             [[(str subdomain "." domain "." tld) domain date] date]))
 
         ;; outputs
+        ;; these are sorted by their respective targets to make importing in bulk easier.
         
         ; doi -> count per period
-        doi-period-count (count-by-key doi-period-date)
+        doi-period-count (count-by-key doi-period-date) 
+        ; sort by domain. Due to an unresolve scoping issue, this can't be extracted into a function yet.
+        doi-period-count (f/map (f/sort-by-key (f/map doi-period-count (f/fn [kv] [((fn [[[doi date] date]] doi) kv) kv]))) (f/fn [[_ v]] v))
+        
         
         ; domain -> count per period
         domain-period-count (count-by-key domain-period-date)
+        ; sort by host
+        domain-period-count (f/map (f/sort-by-key (f/map domain-period-count (f/fn [kv] [((fn [[[host domain date] date2]] host) kv) kv]))) (f/fn [[_ v]] v))
         
         ; subdomain -> count per period
-        subdomain-period-count (count-by-key subdomain-period-date)]
-    
+        subdomain-period-count (count-by-key subdomain-period-date)
+        ; sort by host
+        subdomain-period-count (f/map (f/sort-by-key (f/map subdomain-period-count (f/fn [kv] [((fn [[[host domain] date2]] host) kv) kv]))) (f/fn [[_ v]] v))]
+
+    ; (.saveAsTextFile doi-period-count (str output-location "/" (name period) "-doi-period-count"))    
     (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "-doi-period-count"))
     (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "-domain-period-count"))
     (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "-subdomain-period-count"))))
