@@ -8,7 +8,7 @@ Takes standard DOI resolution logs and aggregates to various outputs. Uses [Apac
 
 Run:
 
-    ./run-example.sh
+    ./scripts-example/run-dev-lein.sh
 
 This will take the example file at `example/hundred/input/hundred.txt` and write the output to `example/hundred/output`.
 
@@ -48,7 +48,8 @@ The following environment variables must be set:
 
  - `INPUT_LOCATION`, e.g. `file:///tmp/doi_logs` or `s3://doi_logs/input`
  - `OUTPUT_LOCATION`, e.g. `file://tmp/doi_output` or `s3://doi_logs/output`
- - `REDACT`, e.g. `true` or `false`
+ - `REDACT`, e.g. `true` or not
+ - `DEV_LOCAL`, e.g. `true` or not - if not set, inherit config from spark runner. If set, use 'local' spark master.
 
 ### Leiningen
 
@@ -105,6 +106,7 @@ TODO
 
  - record successful and unsuccessful resolutions
  - move from whitelist to blacklist
+ - record failed DOI resolution attempts
 
 ### Bugs
 

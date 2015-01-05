@@ -19,7 +19,7 @@
   
              :dev {:aot :all}
              :uberjar {:aot :all}}
-  
+  :global-vars {*warn-on-reflection* true}
   :target-path "target/%s"
   :jvm-opts ["-Duser.timezone=UTC" "-Xmx5G" "-Xms2G"]  ; "-Dsun.io.serialization.extendedDebugInfo=true"
   

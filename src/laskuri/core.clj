@@ -194,9 +194,19 @@
           sc (f/spark-context conf)]  
     (when (and input-location output-location)
       (info "Input" input-location)
-      (info "Output" output-location)      
-      (generate-all-time sc input-location output-location redact)
-      (generate-per-period sc :year input-location output-location redact)
-      (generate-per-period sc :month input-location output-location redact)
-      (generate-per-period sc :day input-location output-location redact))
-))
+      (info "Output" output-location)   
+      (when (= (.toLowerCase (or (env :alltime) "false")) "true")
+        (info "generate-all-time")
+        (generate-all-time sc input-location output-location redact))
+      
+      (when (= (.toLowerCase (or (env :year) "false")) "true")
+        (info "per year")
+        (generate-per-period sc :year input-location output-location redact))
+      
+      (when (= (.toLowerCase (or (env :month) "false")) "true")
+        (info "per month")
+        (generate-per-period sc :month input-location output-location redact))
+      
+      (when (= (.toLowerCase (or (env :day) "false")) "true")
+        (info "per day")
+        (generate-per-period sc :day input-location output-location redact)))))
