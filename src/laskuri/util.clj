@@ -124,10 +124,11 @@
             (let [;^String ip (match 1)
                   date-str (strip-quotes (match 3))
                   doi (match 7)
+                  status (strip-quotes (match 8))
                   referrer-url (convert-special-uri (strip-quotes (match 9)))
                   the-date (format/parse log-date-formatter date-str)
                   domain-triple (get-main-domain (get-host referrer-url) etlds)]
-                    [the-date doi domain-triple]))))
+                    [the-date doi domain-triple status]))))
 
 ;; Date bits
 (defn min-date [a b]

@@ -26,7 +26,7 @@
         parsed-lines (f/map logfiles (f/fn [s] (util/parse-line s)))
         parsed-lines (f/filter parsed-lines (f/fn [line] (not (nil? line))))]
     (if redact?
-      (f/map parsed-lines (f/fn [[date doi domain]] [date doi (util/redact-domain domain)]))
+      (f/map parsed-lines (f/fn [[date doi domain status]] [date doi (util/redact-domain domain) status]))
       parsed-lines)))
 
 (defn swap
@@ -81,20 +81,23 @@
   [ctx input-location output-location redact]
   (let [parsed-lines (get-parsed-lines ctx input-location redact)
         
+        ; filter out lines that didn't resolve, leaving good DOIs
+        parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+        
         ; doi -> date
-        doi-date (f/map parsed-lines (f/fn [[date doi [subdomain domain tld]]]
+        doi-date (f/map parsed-lines-ok (f/fn [[date doi [subdomain domain tld] status]]
                                             [doi date]))
         
         ; domain -> date
-        domain-date (f/map parsed-lines (f/fn [[date doi [subdomain domain tld]]]
+        domain-date (f/map parsed-lines-ok (f/fn [[date doi [subdomain domain tld] status]]
                                               [(str domain "." tld) date]))
 
         ; [domain with subdomain, domain] -> doi
-        subdomain-doi (f/map parsed-lines (f/fn [[date doi [subdomain domain tld]]]
+        subdomain-doi (f/map parsed-lines-ok (f/fn [[date doi [subdomain domain tld] status]]
                                                 [[(str subdomain "." domain "." tld) domain] doi]))
         
         ; domain -> doi
-        domain-doi (f/map parsed-lines (f/fn [[date doi [subdomain domain tld]]]
+        domain-doi (f/map parsed-lines-ok (f/fn [[date doi [subdomain domain tld] status]]
                                              [(str domain "." tld) doi]))
               
         ;; Outputs
@@ -112,7 +115,7 @@
         ; including both subdomain and domain is necessary for the consumer of this dataset.
         subdomain-count (count-by-key-sorted subdomain-doi)]
       
-  
+      
     (.saveAsTextFile (f/map doi-first-date format-kv) (str output-location "/ever-doi-first-date"))
     (.saveAsTextFile (f/map doi-count format-kv) (str output-location "/ever-doi-count"))
     (.saveAsTextFile (f/map domain-count format-kv) (str output-location "/ever-domain-count"))
@@ -123,10 +126,13 @@
   [ctx period input-location output-location redact]
   {:pre [(#{:year :month :day nil} period)]}
   (let [parsed-lines (get-parsed-lines ctx input-location redact)
-
+        
+        ; filter out lines that didn't resolve, leaving good DOIs
+        parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+        
         ; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
-        parsed-lines-period (f/map parsed-lines (f/fn [[date doi domain]]
+        parsed-lines-period (f/map parsed-lines-ok (f/fn [[date doi domain status]]
                                                     [(condp = period
                                                      :year (util/truncate-year date)
                                                      :month (util/truncate-month date)
@@ -138,16 +144,16 @@
         ; (e.g. '10.5555/12345678 per month').
         
         ; [doi period] -> date
-        doi-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
+        doi-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
                                             [[doi date] date]))
 
         ; [full-url-domain-only domain period] -> date
-        domain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
+        domain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
                                             [[(str domain "." tld) domain date] date]))
 
         
         ; [full-url-including-subdomain domain period] -> date
-        subdomain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld]]]
+        subdomain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
                                             [[(str subdomain "." domain "." tld) domain date] date]))
 
         ;; outputs
@@ -169,7 +175,6 @@
         ; sort by host
         subdomain-period-count (f/map (f/sort-by-key (f/map subdomain-period-count (f/fn [kv] [((fn [[[host domain] date2]] host) kv) kv]))) (f/fn [[_ v]] v))]
 
-    ; (.saveAsTextFile doi-period-count (str output-location "/" (name period) "-doi-period-count"))    
     (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "-doi-period-count"))
     (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "-domain-period-count"))
     (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "-subdomain-period-count"))))
