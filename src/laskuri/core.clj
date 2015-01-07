@@ -7,7 +7,8 @@
   (:require [clojure.java.io :as io])
   (:use [clojure.tools.logging :only (info error)])
   (:require [environ.core :refer [env]])
-  (:gen-class main true)) ;:gen-class :)
+  (:import [org.apache.spark.api.java JavaSparkContext StorageLevels])
+  (:gen-class main true))
 
 
 (defn format-kv
@@ -82,7 +83,9 @@
   (let [parsed-lines (get-parsed-lines ctx input-location redact)
         
         ; filter out lines that didn't resolve, leaving good DOIs
-        parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+        parsed-lines-ok (f/persist
+                          (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+                          StorageLevels/DISK_ONLY)
         
         ; doi -> date
         doi-date (f/map parsed-lines-ok (f/fn [[date doi [subdomain domain tld] status]]
@@ -132,13 +135,15 @@
         
         ; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
-        parsed-lines-period (f/map parsed-lines-ok (f/fn [[date doi domain status]]
-                                                    [(condp = period
-                                                     :year (util/truncate-year date)
-                                                     :month (util/truncate-month date)
-                                                     :day (util/truncate-day date)
-                                                     nil date
-                                                     date) doi domain]))
+        parsed-lines-period (f/persist 
+                              (f/map parsed-lines-ok (f/fn [[date doi domain status]]
+                                [(condp = period
+                                 :year (util/truncate-year date)
+                                 :month (util/truncate-month date)
+                                 :day (util/truncate-day date)
+                                 nil date
+                                 date) doi domain]))
+                              StorageLevels/DISK_ONLY)
         
         ; For the following, the period is included in the key because we're counting unique 'X per period'
         ; (e.g. '10.5555/12345678 per month').
