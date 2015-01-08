@@ -22,9 +22,15 @@
   (format "%s\t%s" (string/join "\t" ks) (str v)))
 
 (defn format-kvs
-  "Format a Key, Value line into a tab separated string."
+  "Format a Key, Values line into a tab separated string."
   [[k vs]]
   (format "%s\t%s" k (string/join "\t" (flatten vs))))
+
+(defn format-ksvs
+  "Format a Keys, Value line into a tab separated string."
+  [[ks vs]]
+  (format "%s\t%s" (string/join "\t" (flatten ks)) (string/join "\t" (flatten vs))))
+
 
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
@@ -144,33 +150,42 @@
         ;; outputs
         ;; these are sorted by their respective targets to make importing in bulk easier.
         
-        ; doi -> count per period
+        ; [doi period] -> count
         doi-period-count (count-by-key doi-period-date) 
-        ; sort by domain. Due to an unresolve scoping issue, this can't be extracted into a function yet.
-        doi-period-count (f/map (f/sort-by-key (f/map doi-period-count (f/fn [kv] [((fn [[[doi date] date]] doi) kv) kv]))) (f/fn [[_ v]] v))
         
+        ; sort by domain. Due to an unresolve scoping issue, this can't be extracted into a function yet.
+        doi-period-count (f/map doi-period-count (f/fn [[[doi date] cnt]]
+                                                       [doi [date cnt]]))
+        
+        ; group by DOI. This gives a timeline per DOI.
+        doi-periods-count (f/group-by-key doi-period-count)
         
         ; domain -> count per period
         domain-period-count (count-by-key domain-period-date)
-        ; sort by host
-        domain-period-count (f/map (f/sort-by-key (f/map domain-period-count (f/fn [kv] [((fn [[[host domain date] date2]] host) kv) kv]))) (f/fn [[_ v]] v))
+        domain-period-count (f/map domain-period-count (f/fn [[[host domain date] cnt]]
+                                                           [host [date cnt]]))
+        
+        ; group by domain. This gives a timeline per domain.
+        domain-periods-count (f/group-by-key domain-period-count)
         
         ; subdomain -> count per period
         subdomain-period-count (count-by-key subdomain-period-date)
-        ; sort by host
-        subdomain-period-count (f/map (f/sort-by-key (f/map subdomain-period-count (f/fn [kv] [((fn [[[host domain] date2]] host) kv) kv]))) (f/fn [[_ v]] v))
-
-        ; period -> [[host, count]]
-        period-domains-count (f/group-by-key (f/map domain-period-count (f/fn [[[host domain date] cnt]] [date [host cnt]])))
+        subdomain-period-count (f/map subdomain-period-count (f/fn [[[host domain date] cnt]]
+                                                                     [[host domain] [date cnt]]))
+        subdomain-periods-count (f/group-by-key subdomain-period-count)
         
-        ; sort domains in memory
-        ; period -> [[host, count]] sorted and limited
-        period-domains-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
+        
+        ; period -> [[host, count]]
+        period-domain-count (f/map domain-period-count (f/fn [[host [date cnt]]] [date [host cnt]]))
+        
+        ; group by period
+        period-domains-count (f/group-by-key period-domain-count)
+        period-domains-count-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
     
-    (.saveAsTextFile (f/map period-domains-sorted format-kvs) (str output-location "/" (name period) "-top-domains"))
-    (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "-doi-period-count"))
-    (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "-domain-period-count"))
-    (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "-subdomain-period-count"))))
+      (.saveAsTextFile (f/map doi-periods-count format-kvs) (str output-location "/" (name period) "-doi-periods-count"))
+      (.saveAsTextFile (f/map domain-periods-count format-kvs) (str output-location "/" (name period) "-domain-periods-count"))
+      (.saveAsTextFile (f/map subdomain-periods-count format-ksvs) (str output-location "/" (name period) "-subdomain-periods-count"))
+      (.saveAsTextFile (f/map period-domains-count-sorted format-kvs) (str output-location "/" (name period) "-top-domains"))))
 
 (defn -main
   [& args]
