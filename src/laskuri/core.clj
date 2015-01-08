@@ -21,6 +21,11 @@
   [[ks v]]
   (format "%s\t%s" (string/join "\t" ks) (str v)))
 
+(defn format-kvs
+  "Format a Key, Value line into a tab separated string."
+  [[k vs]]
+  (format "%s\t%s" k (string/join "\t" (flatten vs))))
+
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
   (let [logfiles (f/text-file ctx location)
@@ -178,8 +183,16 @@
         ; subdomain -> count per period
         subdomain-period-count (count-by-key subdomain-period-date)
         ; sort by host
-        subdomain-period-count (f/map (f/sort-by-key (f/map subdomain-period-count (f/fn [kv] [((fn [[[host domain] date2]] host) kv) kv]))) (f/fn [[_ v]] v))]
+        subdomain-period-count (f/map (f/sort-by-key (f/map subdomain-period-count (f/fn [kv] [((fn [[[host domain] date2]] host) kv) kv]))) (f/fn [[_ v]] v))
 
+        ; period -> [[host, count]]
+        period-domains-count (f/group-by-key (f/map domain-period-count (f/fn [[[host domain date] cnt]] [date [host cnt]])))
+        
+        ; sort domains in memory
+        ; period -> [[host, count]] sorted and limited
+        period-domains-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
+    
+    (.saveAsTextFile (f/map period-domains-sorted format-kvs) (str output-location "/" (name period) "-top-domains"))
     (.saveAsTextFile (f/map doi-period-count format-ksv) (str output-location "/" (name period) "-doi-period-count"))
     (.saveAsTextFile (f/map domain-period-count format-ksv) (str output-location "/" (name period) "-domain-period-count"))
     (.saveAsTextFile (f/map subdomain-period-count format-ksv) (str output-location "/" (name period) "-subdomain-period-count"))))
@@ -195,7 +208,7 @@
         ; If local, use this config. Otherwise empty, will be loaded from `spark-submit`. 
         conf (if dev-local
                 (-> (conf/spark-conf)
-                   (conf/master "local")
+                   (conf/master "local[5]")
                    (conf/app-name "laskuri")
                    (conf/set "spark.driver.memory" "500m")
                    (conf/set "spark.executor.memory" "500m")
