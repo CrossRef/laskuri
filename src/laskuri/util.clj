@@ -125,7 +125,9 @@
                   doi (match 7)
                   status (strip-quotes (match 8))
                   referrer-url (convert-special-uri (strip-quotes (match 9)))
-                  the-date (format/parse log-date-formatter date-str)
+                  dt (format/parse log-date-formatter date-str)
+                  ; Store date as a triple.
+                  the-date [(time/year dt) (time/month dt) (time/day dt)]
                   ; get-host will normalize to lower case
                   domain-triple (get-main-domain (get-host referrer-url) etlds)]
                     [the-date doi domain-triple status]))))
@@ -137,15 +139,17 @@
         a b)
       (if a a b)))
 
-(defn truncate-day [date]
-  (time/date-time (time/year date) (time/month date) (time/day date)))
-
-(defn truncate-month [date]
-  (time/date-time (time/year date) (time/month date)))
-
-(defn truncate-year [date]
-  (time/date-time (time/year date)))
-
+(defn min-date-vector [as bs]
+  (let [zipped (map vector as bs)
+        which (loop [[[a b] & r] zipped]
+                (if (= a b)
+                  (if (empty? r)
+                    :equal
+                    (recur r))
+                  (if (> a b) :a :b)))]
+    
+    (if (= which :a) as bs)))
+  
 ;; Domain setlist
 
 ; Mapping of [domain tld] -> random guid.

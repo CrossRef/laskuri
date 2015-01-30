@@ -10,28 +10,6 @@
   (:import [org.apache.spark.api.java JavaSparkContext StorageLevels])
   (:gen-class main true))
 
-
-(defn format-kv
-  "Format a Key, Value line into a tab separated string."
-  [[k v]]
-  (format "%s\t%s" k (str v)))
-
-(defn format-ksv
-  "Format a Key, Value line, where K is a vector, into a tab separated string."
-  [[ks v]]
-  (format "%s\t%s" (string/join "\t" ks) (str v)))
-
-(defn format-kvs
-  "Format a Key, Values line into a tab separated string."
-  [[k vs]]
-  (format "%s\t%s" k (string/join "\t" (flatten vs))))
-
-(defn format-ksvs
-  "Format a Keys, Value line into a tab separated string."
-  [[ks vs]]
-  (format "%s\t%s" (string/join "\t" (flatten ks)) (string/join "\t" (flatten vs))))
-
-
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
   (let [logfiles (f/text-file ctx location)
@@ -99,7 +77,7 @@
         ;; Outputs
         
         ; doi -> first date visited
-        doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date a b)))
+        doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date-vector a b)))
 
         ; doi -> count
         doi-count (count-by-key-sorted doi-date)
@@ -110,10 +88,10 @@
         ; domain and subdomain, domain -> count
         ; including both subdomain and domain is necessary for the consumer of this dataset.
         subdomain-count (count-by-key-sorted subdomain-doi)]
-    (.saveAsTextFile (f/map doi-first-date format-kv) (str output-location "/ever-doi-first-date"))
-    (.saveAsTextFile (f/map doi-count format-kv) (str output-location "/ever-doi-count"))
-    (.saveAsTextFile (f/map domain-count format-kv) (str output-location "/ever-domain-count"))
-    (.saveAsTextFile (f/map subdomain-count format-ksv) (str output-location "/ever-subdomain-count"))))
+    (.saveAsTextFile (f/map doi-first-date pr-str) (str output-location "/ever-doi-first-date"))
+    (.saveAsTextFile (f/map doi-count pr-str) (str output-location "/ever-doi-count"))
+    (.saveAsTextFile (f/map domain-count pr-str) (str output-location "/ever-domain-count"))
+    (.saveAsTextFile (f/map subdomain-count pr-str) (str output-location "/ever-subdomain-count"))))
 
 (defn generate-per-period
   "Generate figures per-day."
@@ -123,10 +101,11 @@
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
         parsed-lines-period (f/persist 
                               (f/map parsed-lines (f/fn [[date doi domain status]]
+                                ; Date is stored as a triple of [year month day]
                                 [(condp = period
-                                 :year (util/truncate-year date)
-                                 :month (util/truncate-month date)
-                                 :day (util/truncate-day date)
+                                 :year (take 1 date)
+                                 :month (take 2 date)
+                                 :day (take 3 date)
                                  nil date
                                  date) doi domain]))
                               StorageLevels/DISK_ONLY)
@@ -182,10 +161,10 @@
         period-domains-count (f/group-by-key period-domain-count)
         period-domains-count-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
     
-      (.saveAsTextFile (f/map doi-periods-count format-kvs) (str output-location "/" (name period) "-doi-periods-count"))
-      (.saveAsTextFile (f/map domain-periods-count format-kvs) (str output-location "/" (name period) "-domain-periods-count"))
-      (.saveAsTextFile (f/map subdomain-periods-count format-ksvs) (str output-location "/" (name period) "-subdomain-periods-count"))
-      (.saveAsTextFile (f/map period-domains-count-sorted format-kvs) (str output-location "/" (name period) "-top-domains"))))
+      (.saveAsTextFile (f/map doi-periods-count pr-str) (str output-location "/" (name period) "-doi-periods-count"))
+      (.saveAsTextFile (f/map domain-periods-count pr-str) (str output-location "/" (name period) "-domain-periods-count"))
+      (.saveAsTextFile (f/map subdomain-periods-count pr-str) (str output-location "/" (name period) "-subdomain-periods-count"))
+      (.saveAsTextFile (f/map period-domains-count-sorted pr-str) (str output-location "/" (name period) "-top-domains"))))
 
 (defn -main
   [& args]
