@@ -48,8 +48,7 @@
        (.getHost (new URL url)))
     (catch Exception _ (try 
      (when (> (count url) 3)
-       ; (println url)
-       (.getHost (new URL (str "http://" url))))
+       (.toLowerCase (.getHost (new URL (str "http://" url)))))
     (catch Exception _ nil)))))
 
 (defn get-main-domain
@@ -127,6 +126,7 @@
                   status (strip-quotes (match 8))
                   referrer-url (convert-special-uri (strip-quotes (match 9)))
                   the-date (format/parse log-date-formatter date-str)
+                  ; get-host will normalize to lower case
                   domain-triple (get-main-domain (get-host referrer-url) etlds)]
                     [the-date doi domain-triple status]))))
 
