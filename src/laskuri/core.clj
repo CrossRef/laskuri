@@ -99,8 +99,7 @@
   {:pre [(#{:year :month :day nil} period)]}
   (let [; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
-        parsed-lines-period (f/persist 
-                              (f/map parsed-lines (f/fn [[date doi domain status]]
+        parsed-lines-period   (f/map parsed-lines (f/fn [[date doi domain status]]
                                 ; Date is stored as a triple of [year month day]
                                 [(condp = period
                                  :year (take 1 date)
@@ -108,7 +107,6 @@
                                  :day (take 3 date)
                                  nil date
                                  date) doi domain]))
-                              StorageLevels/DISK_ONLY)
         
         ; For the following, the period is included in the key because we're counting unique 'X per period'
         ; (e.g. '10.5555/12345678 per month').
@@ -180,29 +178,32 @@
                    (conf/app-name "laskuri")
                    (conf/set "spark.driver.memory" "500m")
                    (conf/set "spark.executor.memory" "500m")
-                   (conf/set "spark.kryoserializer.buffer.mb" "256"))
+                   (conf/set "spark.kryoserializer.buffer.mb" "256")
+                   (conf/set "spark.eventLog.enabled" "true"))
                 (conf/spark-conf))
           sc (f/spark-context conf)
           
           parsed-lines (get-parsed-lines sc input-location redact)
         
           ; filter out lines that didn't resolve, leaving good DOIs
-          parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))]  
+          parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+          
+          parsed-cached (f/persist parsed-lines-ok StorageLevels/DISK_ONLY)]
     (when (and input-location output-location)
       (info "Input" input-location)
       (info "Output" output-location)   
       (when (= (.toLowerCase (or (env :alltime) "false")) "true")
         (info "generate-all-time")
-        (generate-all-time sc input-location output-location redact parsed-lines-ok))
+        (generate-all-time sc input-location output-location redact parsed-cached))
       
       (when (= (.toLowerCase (or (env :year) "false")) "true")
         (info "per year")
-        (generate-per-period sc :year input-location output-location redact parsed-lines-ok))
+        (generate-per-period sc :year input-location output-location redact parsed-cached))
       
       (when (= (.toLowerCase (or (env :month) "false")) "true")
         (info "per month")
-        (generate-per-period sc :month input-location output-location redact parsed-lines-ok))
+        (generate-per-period sc :month input-location output-location redact parsed-cached))
       
       (when (= (.toLowerCase (or (env :day) "false")) "true")
         (info "per day")
-        (generate-per-period sc :day input-location output-location redact parsed-lines-ok)))))
+        (generate-per-period sc :day input-location output-location redact parsed-cached)))))
