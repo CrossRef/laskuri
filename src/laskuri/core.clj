@@ -158,12 +158,7 @@
         ; group by period
         period-domains-count (f/group-by-key period-domain-count)
         period-domains-count-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
-    
-        (prn "******" (.toDebugString doi-periods-count))
-            (prn "******" (.toDebugString domain-periods-count))
-                (prn "******" (.toDebugString subdomain-periods-count))
-                    (prn "******" (.toDebugString period-domains-count-sorted))
-    
+        
       (.saveAsTextFile (f/map doi-periods-count pr-str) (str output-location "/" (name period) "-doi-periods-count"))
       (.saveAsTextFile (f/map domain-periods-count pr-str) (str output-location "/" (name period) "-domain-periods-count"))
       (.saveAsTextFile (f/map subdomain-periods-count pr-str) (str output-location "/" (name period) "-subdomain-periods-count"))

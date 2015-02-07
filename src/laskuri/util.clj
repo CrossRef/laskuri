@@ -11,7 +11,10 @@
     (:require [clj-time.format :refer [parse formatter]]))
 
 (def ^String line-re #"^([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\") ([^\"]{1,2}|[^\"][^ ]*[^\"]|\"[^\"]*\")$")
-(def log-date-formatter (format/formatter (time/default-time-zone) "EEE MMM dd HH:mm:ss zzz yyyy" "EEE MMM dd HH:mm:ss ZZZ yyyy"))
+(def log-date-formatter (format/formatter (time/default-time-zone) 
+                                          "EEE MMM dd HH:mm:ss zzz yyyy"
+                                          "EEE MMM dd HH:mm:ss ZZZ yyyy"
+                                          "yyyy-MM-dd HH:mm:ss.SSSZZ"))
 
 ;; Helper functions.
 (defn domain-parts
