@@ -13,7 +13,7 @@
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
   (let [logfiles (f/text-file ctx location)
-        parsed-lines (f/map logfiles (f/fn [s] (util/parse-line s)))
+        parsed-lines (f/map logfiles (f/fn [s] (util/try-parse-line s)))
         parsed-lines (f/filter parsed-lines (f/fn [line] (not (nil? line))))]
     (if redact?
       (f/map parsed-lines (f/fn [[date doi domain status]] [date doi (util/redact-domain domain) status]))
@@ -159,6 +159,11 @@
         period-domains-count (f/group-by-key period-domain-count)
         period-domains-count-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
     
+        (prn "******" (.toDebugString doi-periods-count))
+            (prn "******" (.toDebugString domain-periods-count))
+                (prn "******" (.toDebugString subdomain-periods-count))
+                    (prn "******" (.toDebugString period-domains-count-sorted))
+    
       (.saveAsTextFile (f/map doi-periods-count pr-str) (str output-location "/" (name period) "-doi-periods-count"))
       (.saveAsTextFile (f/map domain-periods-count pr-str) (str output-location "/" (name period) "-domain-periods-count"))
       (.saveAsTextFile (f/map subdomain-periods-count pr-str) (str output-location "/" (name period) "-subdomain-periods-count"))
@@ -189,6 +194,7 @@
           parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
           
           parsed-cached (f/persist parsed-lines-ok StorageLevels/DISK_ONLY)]
+        
     (when (and input-location output-location)
       (info "Input" input-location)
       (info "Output" output-location)   

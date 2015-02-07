@@ -132,6 +132,11 @@
                   domain-triple (get-main-domain (get-host referrer-url) etlds)]
                     [the-date doi domain-triple status]))))
 
+(defn try-parse-line [^String line]
+  (try
+    (parse-line line)
+    (catch Exception _ nil)))
+
 ;; Date bits
 (defn min-date [a b]
   (if (and a b)
