@@ -1,4 +1,4 @@
-export INPUT_LOCATION=`pwd`/example/hundred/input/hundred.txt
+export INPUT_LOCATION=`pwd`/example/hundred/input/hundred-zipped.gz
 export OUTPUT_LOCATION=`pwd`/example/hundred/output
 export REDACT=true
 export DEV_LOCAL=TRUE

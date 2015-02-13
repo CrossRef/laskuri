@@ -10,6 +10,8 @@
   (:import [org.apache.spark.api.java JavaSparkContext StorageLevels])
   (:gen-class main true))
 
+(def repartition-amount 100)
+
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
   (let [logfiles (f/text-file ctx location)
@@ -188,7 +190,10 @@
           ; filter out lines that didn't resolve, leaving good DOIs
           parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
           
-          parsed-cached (f/persist parsed-lines-ok StorageLevels/DISK_ONLY)]
+          ; Repartition. The input is/may be gzip files, in which case they'll be in one big partition each.
+          parsed-rebalanced (f/repartition parsed-lines-ok repartition-amount)
+          
+          parsed-cached (f/persist parsed-rebalanced StorageLevels/DISK_ONLY)]
         
     (when (and input-location output-location)
       (info "Input" input-location)
