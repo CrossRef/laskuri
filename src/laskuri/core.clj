@@ -10,7 +10,9 @@
   (:import [org.apache.spark.api.java JavaSparkContext StorageLevels])
   (:gen-class main true))
 
-(def repartition-amount 100)
+; Five years of logs is 700 GB. Max partition size is 2GB.
+; 1000 gives ~700 MB partition size.
+(def repartition-amount 1000)
 
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
@@ -191,7 +193,10 @@
           parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
           
           ; Repartition. The input is/may be gzip files, in which case they'll be in one big partition each.
-          parsed-rebalanced (f/repartition parsed-lines-ok repartition-amount)
+          ; This can be nil for no repartition.
+          parsed-rebalanced (if repartition-amount
+            (f/repartition parsed-lines-ok repartition-amount)
+            parsed-lines-ok)
           
           parsed-cached (f/persist parsed-rebalanced StorageLevels/DISK_ONLY)]
         
