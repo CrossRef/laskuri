@@ -5,6 +5,7 @@
   (:require [clj-time.core :as t])
   (:require [clojure.string :as string])
   (:require [clojure.java.io :as io])
+  (:require [clojure.edn :as edn])
   (:use [clojure.tools.logging :only (info error)])
   (:require [environ.core :refer [env]])
   (:import [org.apache.spark.api.java JavaSparkContext StorageLevels])
@@ -12,7 +13,7 @@
 
 ; Five years of logs is 700 GB. Max partition size is 2GB.
 ; 1000 gives ~700 MB partition size.
-(def repartition-amount 1000)
+(def repartition-amount nil)
 
 (defn get-parsed-lines [ctx location redact?]
   "Get a new input stream of parsed lines."
@@ -50,6 +51,10 @@
     (f/map collection (f/fn [[k _]] [k 1]))
     (f/fn [a b] (+ a b))))
 
+(defn count-pairs
+  [collection]
+  (count-by-key (f/map collection (f/fn [[old-key old-value]] [[old-key old-value] 1]))))
+
 (defn sort-by-selector
   "For a key value collection, order by the selector (which acts on the kv pair) and then return in original format."
   [collection sel] 
@@ -61,45 +66,21 @@
 
 (defn generate-all-time
   "Generate figures for all-time."
-  [ctx input-location output-location redact parsed-lines]
+  [ctx input-location output-location redact parsed-lines tasks]
   (let [; doi -> date
         doi-date (f/map parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
                                             [doi date]))
-        
-        ; domain -> date
-        domain-date (f/map parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
-                                              [(str domain "." tld) date]))
-
-        ; [domain with subdomain, domain] -> doi
-        subdomain-doi (f/map parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
-                                                [[(str subdomain "." domain "." tld) domain] doi]))
-        
-        ; domain -> doi
-        domain-doi (f/map parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
-                                             [(str domain "." tld) doi]))
-              
+                      
         ;; Outputs
-        
         ; doi -> first date visited
-        doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date-vector a b)))
-
-        ; doi -> count
-        doi-count (count-by-key-sorted doi-date)
-        
-        ; domain -> count
-        domain-count (count-by-key-sorted domain-date)
-        
-        ; domain and subdomain, domain -> count
-        ; including both subdomain and domain is necessary for the consumer of this dataset.
-        subdomain-count (count-by-key-sorted subdomain-doi)]
-    (.saveAsTextFile (f/map doi-first-date pr-str) (str output-location "/ever-doi-first-date"))
-    (.saveAsTextFile (f/map doi-count pr-str) (str output-location "/ever-doi-count"))
-    (.saveAsTextFile (f/map domain-count pr-str) (str output-location "/ever-domain-count"))
-    (.saveAsTextFile (f/map subdomain-count pr-str) (str output-location "/ever-subdomain-count"))))
+        doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date-vector a b)))]
+    
+    (when (:ever-doi-first-date tasks)
+      (.saveAsTextFile (f/map doi-first-date pr-str) (str output-location "/ever-doi-first-date")))))
 
 (defn generate-per-period
   "Generate figures per-day."
-  [ctx period input-location output-location redact parsed-lines]
+  [ctx period input-location output-location redact parsed-lines tasks]
   {:pre [(#{:year :month :day nil} period)]}
   (let [; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
@@ -114,6 +95,10 @@
         
         ; For the following, the period is included in the key because we're counting unique 'X per period'
         ; (e.g. '10.5555/12345678 per month').
+        
+        ; [doi domain period] -> date
+        doi-domain-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
+                                            [[doi (str domain "." tld) date] date]))
         
         ; [doi period] -> date
         doi-period-date (f/map parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
@@ -131,10 +116,19 @@
         ;; outputs
         ;; these are sorted by their respective targets to make importing in bulk easier.
         
+        ; [doi domain period] -> count
+        doi-domain-period-count (count-by-key doi-domain-period-date)
+
+        ; [doi domain] -> [period count] for grouping into a timeline
+        doi-domain-period-count (f/map doi-domain-period-count (f/fn [[[doi domain date] cnt]]
+                                                       [[doi domain] [date cnt]]))
+        
+        ; Convert to timeline
+        doi-domain-periods-count (f/group-by-key doi-domain-period-count)
+        
         ; [doi period] -> count
         doi-period-count (count-by-key doi-period-date) 
         
-        ; sort by domain. Due to an unresolve scoping issue, this can't be extracted into a function yet.
         doi-period-count (f/map doi-period-count (f/fn [[[doi date] cnt]]
                                                        [doi [date cnt]]))
         
@@ -162,11 +156,44 @@
         ; group by period
         period-domains-count (f/group-by-key period-domain-count)
         period-domains-count-sorted (f/map period-domains-count (f/fn [[date items]] [date (take 100 (reverse (sort-by second items)))]))]
+      
+      (when (:doi-domain-periods-count tasks)
+        (.saveAsTextFile (f/map doi-domain-periods-count pr-str) (str output-location "/" (name period) "-doi-domain-periods-count")))
         
-      (.saveAsTextFile (f/map doi-periods-count pr-str) (str output-location "/" (name period) "-doi-periods-count"))
-      (.saveAsTextFile (f/map domain-periods-count pr-str) (str output-location "/" (name period) "-domain-periods-count"))
-      (.saveAsTextFile (f/map subdomain-periods-count pr-str) (str output-location "/" (name period) "-subdomain-periods-count"))
-      (.saveAsTextFile (f/map period-domains-count-sorted pr-str) (str output-location "/" (name period) "-top-domains"))))
+      (when (:doi-periods-count tasks)
+        (.saveAsTextFile (f/map doi-periods-count pr-str) (str output-location "/" (name period) "-doi-periods-count")))
+        
+      (when (:domain-periods-count tasks)
+        (.saveAsTextFile (f/map domain-periods-count pr-str) (str output-location "/" (name period) "-domain-periods-count")))
+        
+      (when (:subdomain-periods-count tasks)
+        (.saveAsTextFile (f/map subdomain-periods-count pr-str) (str output-location "/" (name period) "-subdomain-periods-count")))
+        
+      (when (:top-domains tasks)
+        (.saveAsTextFile (f/map period-domains-count-sorted pr-str) (str output-location "/" (name period) "-top-domains")))))
+
+(def acceptable-all-time-tasks #{:ever-doi-first-date})
+(def acceptable-period-tasks #{:doi-domain-periods-count :doi-periods-count :domain-periods-count :subdomain-periods-count :top-domains})
+
+(defn read-config
+  [input]
+  {:post [#(acceptable-all-time-tasks (:all-time %))
+          #(acceptable-period-tasks (:year %))
+          #(acceptable-period-tasks (:month %))
+          #(acceptable-period-tasks (:day %))]}
+  
+  (let [tasks (edn/read-string input)
+       
+        all-time (set (map first (filter #(= :all-time (second %)) tasks)))
+        year (set (map first (filter #(= :year (second %)) tasks)))
+        month (set (map first (filter #(= :month (second %)) tasks)))
+        day (set (map first (filter #(= :day (second %)) tasks)))]
+    
+    ; Transform into task-names.
+    {:all-time all-time
+     :year year
+     :month month
+     :day day}))
 
 (defn -main
   [& args]
@@ -174,6 +201,11 @@
         output-location (env :output-location)
         redact (= (.toLowerCase (or (env :redact) "false")) "true")
         dev-local (= (.toLowerCase (or (env :dev-local) "false")) "true")
+        
+        {all-time-tasks :all-time
+         year-tasks :year
+         month-tasks :month
+         day-tasks :day} (read-config (:laskuri-tasks env))
         
         ; If local, use this config. Otherwise empty, will be loaded from `spark-submit`. 
         conf (if dev-local
@@ -203,18 +235,17 @@
     (when (and input-location output-location)
       (info "Input" input-location)
       (info "Output" output-location)   
-      (when (= (.toLowerCase (or (env :alltime) "false")) "true")
-        (info "generate-all-time")
-        (generate-all-time sc input-location output-location redact parsed-cached))
+      (when (not (empty? all-time-tasks))
+        (generate-all-time sc input-location output-location redact parsed-cached all-time-tasks))
       
-      (when (= (.toLowerCase (or (env :year) "false")) "true")
+      (when (not (empty? year-tasks))
         (info "per year")
-        (generate-per-period sc :year input-location output-location redact parsed-cached))
+        (generate-per-period sc :year input-location output-location redact parsed-cached year-tasks))
       
-      (when (= (.toLowerCase (or (env :month) "false")) "true")
+      (when (not (empty? month-tasks))
         (info "per month")
-        (generate-per-period sc :month input-location output-location redact parsed-cached))
+        (generate-per-period sc :month input-location output-location redact parsed-cached month-tasks))
       
-      (when (= (.toLowerCase (or (env :day) "false")) "true")
+      (when (not (empty? day-tasks))
         (info "per day")
-        (generate-per-period sc :day input-location output-location redact parsed-cached)))))
+        (generate-per-period sc :day input-location output-location redact parsed-cached day-tasks)))))

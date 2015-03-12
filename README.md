@@ -31,49 +31,6 @@ For the given input:
 
 You can use this locally by pointing it to a directory containing log files and a directory to place results and Spark will run as a local instance. When running on 'real' data, the input will be an Amazon S3 bucket containing all log files ever, and the output will be an S3 bucket. 
 
-### Formats:
-
-- `host` is, e.g. `www.example.com` including subdomain
-- `domain` is, e.g. `example.
-- dates are ISO8601
-- for 'per period' stats, the date corresponds to the first instant of that period (day, month, year)
-
-Lines of:
-
-#### `ever-doi-first-date`
-
-    «doi»\t«date»
-
-#### `ever-doi-count`
-
-    «doi»\t«count»
-
-#### `ever-domain-count`
-
-
-    «host»\t«count»
-
-#### `ever-subdomain-count`
-
-    «host»\t«domain»\t«count»
-
-#### `(year|month|day)-doi-periods-count`
-    
-    «doi»\t(«date»\t«count»\t)*
-
-#### `(year|month|day)-domain-periods-count`
-    
-    «doi»\t(«host»\t«count»\t)*
-
-#### `(year|month|day)-subdomain-periods-count`
-    
-    «doi»\t(«host»\t«domain»\t«count»\t)*
-
-#### `(year|month|day)-top-domains`
-    
-    «date»\t(«host»\t«count»\t)*
-
-
 ## Redaction
 
 Some of the traffic contained in the logs is confidential, as it reveals outgoing and possibly internal traffic on Publishers' sites, which may be commercially sensitive. Because of this, referral domains and subdomains are compared to a whitelist and potentially redacted. A blacklist isn't perfect, as it requires manual intervention and limits the useful available data. Hopefully we can move to an automatically generated blacklist when we have a list of all publishers' domains. 
@@ -96,10 +53,39 @@ The following environment variables must be set:
  - `OUTPUT_LOCATION`, e.g. `file://tmp/doi_output` or (local) `s3://doi_logs/output` (as above) or `/output` (for HDFS)
  - `REDACT`, e.g. `true` or not
  - `DEV_LOCAL`, e.g. `true` or not - if not set, inherit config from spark runner. If set, use 'local' spark master.
- - `ALLTIME`, e.g. `true` or not - generate all-time stats (`ever`)
- - `YEAR`, e.g. `true` or not - generate per-year period stats
- - `MONTH`, e.g. `true` or not - generate per-month period stats
- - `DAY`, e.g. `true` or not - generate per-day period stats
+ - `LASKURI_TASKS`, list of types of data to produce
+
+### LASKURI_TASKS
+
+This is a sequence of tuples of [type period], serialised as EDN. Types available:
+
+Periods available:
+
+:all-time :year :month :day
+
+Types available for :all-time:
+
+ - `:ever-doi-first-date` - first date on which the DOI was resolved
+
+Types available for :year, :month, :day
+
+ - `:doi-domain-periods-count` - timeline of [DOI, domain] -> count per period
+ - `:top-domains` - timeline of top referring domains per period
+ - `:doi-periods-count` - timeline of DOI resolution count per period
+ - `:domain-periods-count` - timeline of Domain referral count per period
+ - `:subdomain-periods-count` - timeline of Subdomain referrals
+ - `:top-domains` - top referring domains
+
+Standard config:
+
+    [[:ever-doi-first-date :all-time]
+    [:doi-domain-periods-count :month]
+    [:top-domains :month]
+    [:doi-periods-count :day]
+    [:domain-periods-count :day]
+    [:subdomain-periods-count :day]
+    [:top-domains :day]]
+
 
 ### Leiningen
 

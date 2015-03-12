@@ -5,5 +5,6 @@ export REDACT=true
 export AWS_ACCESS_KEY_ID=TODO
 export AWS_SECRET_ACCESS_KEY=TODO
 export DEV_LOCAL=TRUE
+export LASKURI_TASKS="[[:ever-doi-first-date :all-time] [:doi-domain-periods-count :month] [:top-domains :month] [:doi-periods-count :day] [:domain-periods-count :day] [:subdomain-periods-count :day] [:top-domains :day]]"
 
 lein run
