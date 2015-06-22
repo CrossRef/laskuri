@@ -1,7 +1,20 @@
 (ns laskuri.core
   (:require [flambo.conf :as conf])
-  (:require [flambo.api :as f]
-            [flambo.tuple :as ft])
+  (:require [flambo.api :as flambo-api])
+  ; Ridiculous namespace juggling to try and solve a mysterious namespace error (see "doc/crashes/15/06/22-resolve-f")
+  (:refer flambo.api :only [map map-to-pair text-file fn filter sort-by-key reduce-by-key spark-context repartition persist group-by-key]
+          :rename {map f-map
+                   map-to-pair f-map-to-pair
+                   text-file f-text-file
+                   fn f-fn
+                   filter f-filter
+                   sort-by-key f-sort-by-key
+                   reduce-by-key f-reduce-by-key
+                   spark-context f-spark-context
+                   repartition f-repartition
+                   persist f-persist
+                   group-by-key f-group-by-key})
+  (:require [flambo.tuple :as ft])
   (:require [laskuri.util :as util])
   (:require [clj-time.core :as t])
   (:require [clojure.string :as string])
@@ -20,7 +33,7 @@
 (def repartition-amount nil)
 
 (defn save-rdd [rdd file-path]
-  (let [lines (f/map rdd #(pr-str [(._1 ^scala.Tuple2 %) 
+  (let [lines (f-map rdd #(pr-str [(._1 ^scala.Tuple2 %) 
                                    (if (instance? Iterable (._2 ^scala.Tuple2 %))
                                     (vec (._2 ^scala.Tuple2 %))
                                     (._2 ^scala.Tuple2 %))]))]
@@ -28,50 +41,50 @@
 
 (defn get-parsed-lines [ctx location]
   "Get a new input stream of parsed lines."
-  (let [logfiles (f/text-file ctx location)
-        parsed-lines (f/map logfiles (f/fn [s] (util/try-parse-line s)))
-        parsed-lines (f/filter parsed-lines (f/fn [line] (not (nil? line))))]
+  (let [logfiles (f-text-file ctx location)
+        parsed-lines (f-map logfiles (f-fn [s] (util/try-parse-line s)))
+        parsed-lines (f-filter parsed-lines (f-fn [line] (not (nil? line))))]
     parsed-lines))
 
 (defn swap
   "Swap keys and values of an K,V pair"
   [coll]
-  (f/map-to-pair coll (ft/key-val-fn (f/fn [cnt k] (ft/tuple k cnt)))))
+  (f-map-to-pair coll (ft/key-val-fn (f-fn [cnt k] (ft/tuple k cnt)))))
 
-(defn count-by-key-sorted
+(defn rdd-count-by-key-sorted
   "For a key, value collection, count the key, returning key, count ordered by count.
   Is a 'transformation' producing an RDD, is not an 'action'.
   The Spark count-by-key is an action, so not massively useful for large datasets."
   [collection]
   (swap
-    (f/sort-by-key 
+    (f-sort-by-key 
       (swap
-        (f/reduce-by-key
-          (f/map-to-pair collection (ft/key-val-fn (f/fn [k _] (ft/tuple k 1))))
-          (f/fn [a b] (+ a b))))
+        (f-reduce-by-key
+          (f-map-to-pair collection (ft/key-val-fn (f-fn [k _] (ft/tuple k 1))))
+          (f-fn [a b] (+ a b))))
       false)))
 
-(defn count-by-key
+(defn rdd-count-by-key
   "For a key, value collection, count the key, returning key, count.
   Is a 'transformation' producing an RDD, is not an 'action'.
   The Spark count-by-key is an action, so not massively useful for large datasets."
   [collection]
-  (f/reduce-by-key
-    (f/map-to-pair collection (ft/key-val-fn (f/fn [k _] (ft/tuple k 1))))
-    (f/fn [a b] (+ a b))))
+  (f-reduce-by-key
+    (f-map-to-pair collection (ft/key-val-fn (f-fn [k _] (ft/tuple k 1))))
+    (f-fn [a b] (+ a b))))
 
 (defn count-pairs
   [collection]
-  (count-by-key (f/map-to-pair collection (ft/key-val-fn (f/fn [old-key old-value] (ft/tuple [old-key old-value] 1))))))
+  (rdd-count-by-key (f-map-to-pair collection (ft/key-val-fn (f-fn [old-key old-value] (ft/tuple [old-key old-value] 1))))))
 
 (defn sort-by-selector
   "For a key value collection, order by the selector (which acts on the kv pair) and then return in original format."
   [collection sel] 
-  (f/map
-    (f/sort-by-key
-      (f/map collection
-             (f/fn [kv] [(sel kv) kv])))
-    (ft/key-val-fn (f/fn [_ v] v))))
+  (f-map
+    (f-sort-by-key
+      (f-map collection
+             (f-fn [kv] [(sel kv) kv])))
+    (ft/key-val-fn (f-fn [_ v] v))))
 
 ;; The parts of the analysis are divided into all-time, per year, month and day. This is because each pipline involves (potentially) re-reading the input stream
 ;; and there seems to be a bug or something that crops up when rereading the stream multiple times. Still unsolved: http://stackoverflow.com/questions/27403732/kryoexception-buffer-overflow-with-very-small-input
@@ -82,12 +95,12 @@
   "Generate figures for all-time."
   [ctx input-location output-location parsed-lines tasks]
   (let [; doi -> date
-        doi-date (f/map-to-pair parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
+        doi-date (f-map-to-pair parsed-lines (f-fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple doi date)))
                       
         ;; Outputs
         ; doi -> first date visited
-        doi-first-date (f/reduce-by-key doi-date (f/fn [a b] (util/min-date-vector a b)))]
+        doi-first-date (f-reduce-by-key doi-date (f-fn [a b] (util/min-date-vector a b)))]
     
     (when (:ever-doi-first-date tasks)
       ; (.saveAsTextFile doi-first-date (str output-location "/ever-doi-first-date"))
@@ -101,7 +114,7 @@
   {:pre [(#{:year :month :day nil} period)]}
   (let [; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
-        parsed-lines-period   (f/map parsed-lines (f/fn [[date doi domain status]]
+        parsed-lines-period   (f-map parsed-lines (f-fn [[date doi domain status]]
                                 ; Date is stored as a triple of [year month day]
                                 [(condp = period
                                  :year (take 1 date)
@@ -114,67 +127,67 @@
         ; (e.g. '10.5555/12345678 per month').
         
         ; [doi domain period] -> date
-        doi-domain-period-date (f/map-to-pair parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
+        doi-domain-period-date (f-map-to-pair parsed-lines-period (f-fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple [doi (str domain "." tld) date] date)))
         
         ; [doi period] -> date
-        doi-period-date (f/map-to-pair parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
+        doi-period-date (f-map-to-pair parsed-lines-period (f-fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple [doi date] date)))
 
         ; [full-url-domain-only domain period] -> date
-        domain-period-date (f/map-to-pair parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
+        domain-period-date (f-map-to-pair parsed-lines-period (f-fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple [(str domain "." tld) domain date] date)))
 
         
         ; [full-url-including-subdomain domain period] -> date
-        subdomain-period-date (f/map-to-pair parsed-lines-period (f/fn [[date doi [subdomain domain tld] status]]
+        subdomain-period-date (f-map-to-pair parsed-lines-period (f-fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple [(str subdomain "." domain "." tld) domain date] date)))
 
         ;; outputs
         ;; these are sorted by their respective targets to make importing in bulk easier.
         
         ; [doi domain period] -> count
-        doi-domain-period-count (count-by-key doi-domain-period-date)
+        doi-domain-period-count (rdd-count-by-key doi-domain-period-date)
 
         ; [doi domain] -> [period count] for grouping into a timeline
-        doi-domain-period-count (f/map-to-pair doi-domain-period-count (ft/key-val-fn
-                                                                         (f/fn [[doi domain date] cnt]
+        doi-domain-period-count (f-map-to-pair doi-domain-period-count (ft/key-val-fn
+                                                                         (f-fn [[doi domain date] cnt]
                                                                                (ft/tuple [doi domain] [date cnt]))))
         
         ; Convert to timeline
-        doi-domain-periods-count (f/group-by-key doi-domain-period-count)
+        doi-domain-periods-count (f-group-by-key doi-domain-period-count)
        
        ; [doi period] -> count
-       doi-period-count (count-by-key doi-period-date) 
+       doi-period-count (rdd-count-by-key doi-period-date) 
        
-       doi-period-count (f/map-to-pair doi-period-count (ft/key-val-fn (f/fn [[doi date] cnt]
+       doi-period-count (f-map-to-pair doi-period-count (ft/key-val-fn (f-fn [[doi date] cnt]
                                                       (ft/tuple doi [date cnt]))))
        
        ; group by DOI. This gives a timeline per DOI.
-       doi-periods-count (f/group-by-key doi-period-count)
+       doi-periods-count (f-group-by-key doi-period-count)
        
        ; domain -> count per period
-       domain-period-count (count-by-key domain-period-date)
-       domain-period-count (f/map-to-pair domain-period-count (ft/key-val-fn (f/fn [[host domain date] cnt]
+       domain-period-count (rdd-count-by-key domain-period-date)
+       domain-period-count (f-map-to-pair domain-period-count (ft/key-val-fn (f-fn [[host domain date] cnt]
                                                           (ft/tuple host [date cnt]))))
        
        ; group by domain. This gives a timeline per domain.
-       domain-periods-count (f/group-by-key domain-period-count)
+       domain-periods-count (f-group-by-key domain-period-count)
        
        ; subdomain -> count per period
-       subdomain-period-count (count-by-key subdomain-period-date)
-       subdomain-period-count (f/map-to-pair subdomain-period-count (ft/key-val-fn (f/fn [[host domain date] cnt]
+       subdomain-period-count (rdd-count-by-key subdomain-period-date)
+       subdomain-period-count (f-map-to-pair subdomain-period-count (ft/key-val-fn (f-fn [[host domain date] cnt]
                                                                     (ft/tuple [host domain] [date cnt]))))
-       subdomain-periods-count (f/group-by-key subdomain-period-count)
+       subdomain-periods-count (f-group-by-key subdomain-period-count)
        
        
        ; period -> [[host, count]]
-       period-domain-count (f/map-to-pair domain-period-count (ft/key-val-fn (f/fn [host [date cnt]]
+       period-domain-count (f-map-to-pair domain-period-count (ft/key-val-fn (f-fn [host [date cnt]]
                                                                     (ft/tuple date [host cnt]))))
        
        ; group by period
-       period-domains-count (f/group-by-key period-domain-count)
-       period-domains-count-sorted (f/map period-domains-count (ft/key-val-fn (f/fn [date items]
+       period-domains-count (f-group-by-key period-domain-count)
+       period-domains-count-sorted (f-map period-domains-count (ft/key-val-fn (f-fn [date items]
                                                                      (ft/tuple date (take 100 (reverse (sort-by second items)))))))
         
         ]
@@ -253,20 +266,20 @@
                    (conf/set "spark.kryoserializer.buffer.mb" "256")
                    (conf/set "spark.eventLog.enabled" "true"))
                 (conf/spark-conf))
-          sc (f/spark-context conf)
+          sc (f-spark-context conf)
           
           parsed-lines (get-parsed-lines sc input-location)
         
           ; filter out lines that didn't resolve, leaving good DOIs
-          parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length ^java.lang.String status))))
+          parsed-lines-ok (f-filter parsed-lines (f-fn [[date doi domain status]] (not= 0 (.length ^java.lang.String status))))
           
           ; Repartition. The input is/may be gzip files, in which case they'll be in one big partition each.
           ; This can be nil for no repartition.
           parsed-rebalanced (if repartition-amount
-            (f/repartition parsed-lines-ok repartition-amount)
+            (f-repartition parsed-lines-ok repartition-amount)
             parsed-lines-ok)
           
-          parsed-cached (f/persist parsed-rebalanced StorageLevels/DISK_ONLY)]
+          parsed-cached (f-persist parsed-rebalanced StorageLevels/DISK_ONLY)]
         
     (when (and input-location output-location)
       (info "Input" input-location)
