@@ -20,20 +20,18 @@
 (def repartition-amount nil)
 
 (defn save-rdd [rdd file-path]
-  (let [lines (f/map rdd #(pr-str [(._1 %) 
-                                   (if (instance? Iterable (._2 %))
-                                    (vec (._2 %))
-                                    (._2 %))]))]
-      (.saveAsTextFile lines file-path)))
+  (let [lines (f/map rdd #(pr-str [(._1 ^scala.Tuple2 %) 
+                                   (if (instance? Iterable (._2 ^scala.Tuple2 %))
+                                    (vec (._2 ^scala.Tuple2 %))
+                                    (._2 ^scala.Tuple2 %))]))]
+      (.saveAsTextFile ^org.apache.spark.api.java.JavaRDD lines file-path)))
 
-(defn get-parsed-lines [ctx location redact?]
+(defn get-parsed-lines [ctx location]
   "Get a new input stream of parsed lines."
   (let [logfiles (f/text-file ctx location)
         parsed-lines (f/map logfiles (f/fn [s] (util/try-parse-line s)))
         parsed-lines (f/filter parsed-lines (f/fn [line] (not (nil? line))))]
-    (if redact?
-      (f/map parsed-lines (f/fn [[date doi domain status]] [date doi (util/redact-domain domain) status]))
-      parsed-lines)))
+    parsed-lines))
 
 (defn swap
   "Swap keys and values of an K,V pair"
@@ -82,7 +80,7 @@
 
 (defn generate-all-time
   "Generate figures for all-time."
-  [ctx input-location output-location redact parsed-lines tasks]
+  [ctx input-location output-location parsed-lines tasks]
   (let [; doi -> date
         doi-date (f/map-to-pair parsed-lines (f/fn [[date doi [subdomain domain tld] status]]
                                             (ft/tuple doi date)))
@@ -99,7 +97,7 @@
 
 (defn generate-per-period
   "Generate figures per-day."
-  [ctx period input-location output-location redact parsed-lines tasks]
+  [ctx period input-location output-location parsed-lines tasks]
   {:pre [(#{:year :month :day nil} period)]}
   (let [; date truncated to period
         ; date represents the beginning of the period (i.e. first second of the day, month or year).
@@ -223,7 +221,6 @@
           #(acceptable-period-tasks (:day %))]}
   
   (let [tasks (edn/read-string input)
-       
         all-time (set (map first (filter #(= :all-time (second %)) tasks)))
         year (set (map first (filter #(= :year (second %)) tasks)))
         month (set (map first (filter #(= :month (second %)) tasks)))
@@ -239,8 +236,7 @@
   [& args]
   (let [input-location (env :input-location)
         output-location (env :output-location)
-        redact (= (.toLowerCase (or (env :redact) "false")) "true")
-        dev-local (= (.toLowerCase (or (env :dev-local) "false")) "true")
+        dev-local (= (.toLowerCase (or ^java.lang.String (env :dev-local) "false")) "true")
         
         {all-time-tasks :all-time
          year-tasks :year
@@ -259,10 +255,10 @@
                 (conf/spark-conf))
           sc (f/spark-context conf)
           
-          parsed-lines (get-parsed-lines sc input-location redact)
+          parsed-lines (get-parsed-lines sc input-location)
         
           ; filter out lines that didn't resolve, leaving good DOIs
-          parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length status))))
+          parsed-lines-ok (f/filter parsed-lines (f/fn [[date doi domain status]] (not= 0 (.length ^java.lang.String status))))
           
           ; Repartition. The input is/may be gzip files, in which case they'll be in one big partition each.
           ; This can be nil for no repartition.
@@ -276,16 +272,16 @@
       (info "Input" input-location)
       (info "Output" output-location)   
       (when (not (empty? all-time-tasks))
-        (generate-all-time sc input-location output-location redact parsed-cached all-time-tasks))
+        (generate-all-time sc input-location output-location parsed-cached all-time-tasks))
       
       (when (not (empty? year-tasks))
         (info "per year")
-        (generate-per-period sc :year input-location output-location redact parsed-cached year-tasks))
+        (generate-per-period sc :year input-location output-location parsed-cached year-tasks))
       
       (when (not (empty? month-tasks))
         (info "per month")
-        (generate-per-period sc :month input-location output-location redact parsed-cached month-tasks))
+        (generate-per-period sc :month input-location output-location parsed-cached month-tasks))
       
       (when (not (empty? day-tasks))
         (info "per day")
-        (generate-per-period sc :day input-location output-location redact parsed-cached day-tasks)))))
+        (generate-per-period sc :day input-location output-location parsed-cached day-tasks)))))

@@ -9,7 +9,7 @@
                  [org.clojure/data.json "0.2.3"]
                  [org.clojure/tools.logging "0.2.6"]
                  [environ "1.0.0"]]
-  :main ^:skip-aot laskuri.core
+  :main laskuri.core
   :profiles {:provided
              {:aot :all
               :dependencies
